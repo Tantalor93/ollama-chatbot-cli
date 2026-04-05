@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/manifoldco/promptui"
 	"github.com/ollama/ollama/api"
 	"github.com/schollz/progressbar/v3"
 )
@@ -19,12 +20,19 @@ import (
 func main() {
 	ollamaServer := flag.String("url", "http://127.0.0.1:11434", "URL of the Ollama server")
 	flag.Parse()
-	
+
 	parsedURL, err := url.Parse(*ollamaServer)
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "Invalid URL %s\n", *ollamaServer)
+		os.Exit(1)
 	}
 	client := api.NewClient(parsedURL, http.DefaultClient)
+
+	model, err := selectModel(client)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error selecting model:", err)
+		os.Exit(1)
+	}
 
 	var modelContext []api.Message = []api.Message{
 		{
@@ -49,7 +57,7 @@ func main() {
 			Content: input,
 		})
 
-		response, err := query(modelContext, client)
+		response, err := query(modelContext, model, client)
 		if err != nil {
 			fmt.Println("Error:", err)
 			continue
@@ -67,9 +75,9 @@ func main() {
 	}
 }
 
-func query(modelContext []api.Message, client *api.Client) (string, error) {
+func query(modelContext []api.Message, model string, client *api.Client) (string, error) {
 	req := api.ChatRequest{
-		Model:    "llama3.2",
+		Model:    model,
 		Messages: modelContext,
 		Stream:   new(bool),
 	}
@@ -101,4 +109,35 @@ func printUserPrompt() {
 
 func printModelPrompt() {
 	color.New(color.FgYellow).Print("< ")
+}
+
+// selectModel let user select model from the list of models available on the Ollama server. It returns the name of the selected model.
+func selectModel(client *api.Client) (string, error) {
+	ctx := context.Background()
+
+	resp, err := client.List(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to list models: %w", err)
+	}
+
+	if len(resp.Models) == 0 {
+		return "", fmt.Errorf("no models available on the server")
+	}
+
+	names := make([]string, len(resp.Models))
+	for i, m := range resp.Models {
+		names[i] = m.Name
+	}
+
+	prompt := promptui.Select{
+		Label: "Select model",
+		Items: names,
+	}
+
+	_, selected, err := prompt.Run()
+	if err != nil {
+		return "", err
+	}
+
+	return selected, nil
 }
