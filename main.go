@@ -52,12 +52,8 @@ func main() {
 		}
 		fmt.Println("-----")
 
-		modelContext = append(modelContext, api.Message{
-			Role:    "user",
-			Content: input,
-		})
-
-		response, err := query(modelContext, model, client)
+		var response string
+		modelContext, response, err = query(modelContext, input, model, client)
 		if err != nil {
 			fmt.Println("Error:", err)
 			continue
@@ -67,21 +63,11 @@ func main() {
 		fmt.Println(response)
 		fmt.Println("-----")
 
-		modelContext = append(modelContext, api.Message{
-			Role:    "assistant",
-			Content: response,
-		})
 		printUserPrompt()
 	}
 }
 
-func query(modelContext []api.Message, model string, client *api.Client) (string, error) {
-	req := api.ChatRequest{
-		Model:    model,
-		Messages: modelContext,
-		Stream:   new(bool),
-	}
-
+func query(modelContext []api.Message, input string, model string, client *api.Client) ([]api.Message, string, error) {
 	progress := progressbar.NewOptions(
 		-1,
 		progressbar.OptionSetWriter(os.Stderr),
@@ -94,13 +80,12 @@ func query(modelContext []api.Message, model string, client *api.Client) (string
 	)
 	defer progress.Finish()
 
-	var result string
-	err := client.Chat(context.Background(), &req, func(resp api.ChatResponse) error {
-		result = resp.Message.Content
-		return nil
+	modelContext = append(modelContext, api.Message{
+		Role:    "user",
+		Content: input,
 	})
 
-	return result, err
+	return queryModel(model, modelContext, client)
 }
 
 func printUserPrompt() {
@@ -141,3 +126,4 @@ func selectModel(client *api.Client) (string, error) {
 
 	return selected, nil
 }
+
